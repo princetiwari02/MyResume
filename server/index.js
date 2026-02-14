@@ -20,16 +20,21 @@ console.log("---")
 const app = express()
 
 // CORS configuration
+
 const corsOptions = {
   origin: [
     'http://localhost:5173',  // Local development
-    'https://myresume-tau-two.vercel.app'  // Your deployed frontend
+    'https://myresume-tau-two.vercel.app',  // Your main Vercel URL
+    'https://myresume-6o3qqk6ty-bishal-tiwaris-projects-dea90b24.vercel.app'  // Add this!
   ],
   credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization'],
   optionsSuccessStatus: 200
 }
 
 app.use(cors(corsOptions))
+
 
 // JSON parsing
 app.use(express.json())
