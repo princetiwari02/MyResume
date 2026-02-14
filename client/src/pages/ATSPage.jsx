@@ -1,6 +1,7 @@
 import { useState } from "react"
 import { useNavigate } from "react-router-dom"
 import { Target, Upload, FileText, TrendingUp, AlertCircle, CheckCircle, Sparkles, ArrowLeft } from "lucide-react"
+import API_URL from "../config"
 
 function ATSPage() {
   const navigate = useNavigate()
@@ -40,7 +41,7 @@ function ATSPage() {
       formData.append("jobDescription", jobDescription)
 
       const token = localStorage.getItem("token")
-      const response = await fetch("http://localhost:5000/api/ats/analyze", {
+      const response = await fetch(`${API_URL}/api/ats/analyze`, {
         method: "POST",
         headers: {
           "Authorization": `Bearer ${token}`

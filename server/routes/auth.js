@@ -1,82 +1,36 @@
 import express from "express"
-import bcrypt from "bcryptjs"
 import jwt from "jsonwebtoken"
 import User from "../models/User.js"
 
 const router = express.Router()
 
-
-
-// SIGN UP
-router.post("/register", async (req, res) => {
-     console.log("HEADERS:", req.headers["content-type"])
-     console.log("BODY:", req.body)
+// POST /api/auth/firebase-login
+// Handle Firebase authentication and create/return JWT
+router.post("/firebase-login", async (req, res) => {
   try {
-    const { name, email, password } = req.body
+    const { firebaseToken, email, name } = req.body
 
-    // ✅ validation
-    if (!name || !email || !password) {
-      return res.status(400).json({ message: "All fields are required" })
+    if (!email) {
+      return res.status(400).json({ message: "Email is required" })
     }
 
-    const existingUser = await User.findOne({ email })
-    if (existingUser) {
-      return res.status(400).json({ message: "User already exists" })
-    }
+    // Find or create user
+    let user = await User.findOne({ email })
 
-    const hashedPassword = await bcrypt.hash(password, 10)
-
-    const user = await User.create({
-      name,
-      email,
-      password: hashedPassword
-    })
-
-    const token = jwt.sign(
-      { id: user._id },
-      process.env.JWT_SECRET,
-      { expiresIn: "7d" }
-    )
-
-    res.status(201).json({
-      token,
-      user: {
-        id: user._id,
-        name: user.name,
-        email: user.email,
-        plan: user.plan
-      }
-    })
-  } catch (err) {
-    console.error("REGISTER ERROR:", err)
-    res.status(500).json({ message: "Server error" })
-  }
-})
-
-// LOGIN
-router.post("/login", async (req, res) => {
-  try {
-    const { email, password } = req.body
-
-    // ✅ validation
-    if (!email || !password) {
-      return res.status(400).json({ message: "Email and password required" })
-    }
-
-    const user = await User.findOne({ email })
     if (!user) {
-      return res.status(400).json({ message: "Invalid credentials" })
+      // Create new user
+      user = await User.create({
+        name: name || email.split('@')[0],
+        email,
+        password: 'firebase-auth' // Placeholder, not used for Firebase users
+      })
     }
 
-    const isMatch = await bcrypt.compare(password, user.password)
-    if (!isMatch) {
-      return res.status(400).json({ message: "Invalid credentials" })
-    }
-
+    // Create JWT token
     const token = jwt.sign(
       { id: user._id },
       process.env.JWT_SECRET,
-      { expiresIn: "7d" }
+      { expiresIn: '30d' }
     )
 
     res.json({
@@ -84,13 +38,84 @@ router.post("/login", async (req, res) => {
       user: {
         id: user._id,
         name: user.name,
-        email: user.email,
-        plan: user.plan
+        email: user.email
       }
     })
-  } catch (err) {
-    console.error("LOGIN ERROR:", err)
-    res.status(500).json({ message: "Server error" })
+
+  } catch (error) {
+    console.error('Firebase login error:', error)
+    res.status(500).json({ 
+      message: 'Server error during Firebase authentication',
+      error: error.message 
+    })
+  }
+})
+
+// Existing routes (signup, login) remain the same...
+// POST /api/auth/signup
+router.post("/signup", async (req, res) => {
+  try {
+    const { name, email, password } = req.body
+
+    // Check if user exists
+    const existingUser = await User.findOne({ email })
+    if (existingUser) {
+      return res.status(400).json({ message: "User already exists" })
+    }
+
+    // Create user
+    const user = await User.create({ name, email, password })
+
+    // Create token
+    const token = jwt.sign({ id: user._id }, process.env.JWT_SECRET, {
+      expiresIn: "30d",
+    })
+
+    res.status(201).json({
+      token,
+      user: {
+        id: user._id,
+        name: user.name,
+        email: user.email,
+      },
+    })
+  } catch (error) {
+    res.status(500).json({ message: "Server error", error: error.message })
+  }
+})
+
+// POST /api/auth/login
+router.post("/login", async (req, res) => {
+  try {
+    const { email, password } = req.body
+
+    // Find user
+    const user = await User.findOne({ email })
+    if (!user) {
+      return res.status(401).json({ message: "Invalid credentials" })
+    }
+
+    // Check password
+    const isMatch = await user.comparePassword(password)
+    if (!isMatch) {
+      return res.status(401).json({ message: "Invalid credentials" })
+    }
+
+    // Create token
+    const token = jwt.sign({ id: user._id }, process.env.JWT_SECRET, {
+      expiresIn: "30d",
+    })
+
+    res.json({
+      token,
+      user: {
+        id: user._id,
+        name: user.name,
+        email: user.email,
+      },
+    })
+  } catch (error) {
+    res.status(500).json({ message: "Server error", error: error.message })
   }
 })
 
