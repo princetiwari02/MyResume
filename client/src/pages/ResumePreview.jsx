@@ -2,6 +2,7 @@ import { useEffect, useState } from "react"
 import { useNavigate } from "react-router-dom"
 import { Download, Edit, Home } from "lucide-react"
 import axios from "axios"
+import API_URL from "../config"
 
 function ResumePreview() {
   const navigate = useNavigate()
@@ -47,7 +48,7 @@ function ResumePreview() {
       
       // Call backend API to generate PDF
       const response = await axios.post(
-        'http://localhost:5000/api/pdf/generate',
+        `${API_URL}/api/pdf/generate`,
         { resumeData },
         {
           headers: {
