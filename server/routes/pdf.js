@@ -173,9 +173,9 @@ router.post("/generate", protect, async (req, res) => {
       }
       
       if (resumeData.skills.tools.length > 0) {
-        doc.fontSize(10).font('Helvetica-Bold').fillColor(BLUE2).text('DataBases: ', marginLeft, yPos, { continued: true, width: contentWidth })
-        doc.font('Helvetica').fillColor(BLACK).text(resumeData.skills.tools.join(', '), { width: contentWidth - doc.widthOfString('DataBases: ') })
-        yPos += doc.heightOfString(resumeData.skills.tools.join(', '), { width: contentWidth - doc.widthOfString('DataBases: ') }) + 3
+        doc.fontSize(10).font('Helvetica-Bold').fillColor(BLUE2).text('Tools & DataBases: ', marginLeft, yPos, { continued: true, width: contentWidth })
+        doc.font('Helvetica').fillColor(BLACK).text(resumeData.skills.tools.join(', '), { width: contentWidth - doc.widthOfString('Tools & DataBases: ') })
+        yPos += doc.heightOfString(resumeData.skills.tools.join(', '), { width: contentWidth - doc.widthOfString('Tools & DataBases: ') }) + 3
       }
       
       if (resumeData.skills.soft.length > 0) {

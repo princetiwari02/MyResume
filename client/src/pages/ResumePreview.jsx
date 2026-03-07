@@ -243,7 +243,7 @@ function ResumePreview() {
               {/* Tools/Databases */}
               {resumeData.skills.tools.length > 0 && (
                 <p style={{ fontSize: '10pt', lineHeight: '1.5', margin: '0 0 4px 0' }}>
-                  <span style={{ fontWeight: '600', color: BLUE2 }}>DataBases: </span>
+                  <span style={{ fontWeight: '600', color: BLUE2 }}>Tools & DataBases: </span>
                   <span style={{ color: BLACK }}>{resumeData.skills.tools.join(", ")}</span>
                 </p>
               )}

@@ -785,7 +785,7 @@ function ResumePage() {
                     <h2 style={{ fontSize: '11pt', fontWeight: '700', textTransform: 'uppercase', color: '#0c1e5e', borderBottom: '1px solid #000', paddingBottom: '2px', marginBottom: '8px' }}>Skills</h2>
                     {resume.skills.languages.length > 0 && <p style={{ fontSize: '10pt', margin: '0 0 4px 0' }}><span style={{ fontWeight: '600', color: '#1a4d8f' }}>Languages: </span><span style={{ color: '#000' }}>{resume.skills.languages.join(", ")}</span></p>}
                     {resume.skills.frameworks.length > 0 && <p style={{ fontSize: '10pt', margin: '0 0 4px 0' }}><span style={{ fontWeight: '600', color: '#1a4d8f' }}>Framework: </span><span style={{ color: '#000' }}>{resume.skills.frameworks.join(", ")}</span></p>}
-                    {resume.skills.tools.length > 0 && <p style={{ fontSize: '10pt', margin: '0 0 4px 0' }}><span style={{ fontWeight: '600', color: '#1a4d8f' }}>DataBases: </span><span style={{ color: '#000' }}>{resume.skills.tools.join(", ")}</span></p>}
+                    {resume.skills.tools.length > 0 && <p style={{ fontSize: '10pt', margin: '0 0 4px 0' }}><span style={{ fontWeight: '600', color: '#1a4d8f' }}>Tools & DataBases: </span><span style={{ color: '#000' }}>{resume.skills.tools.join(", ")}</span></p>}
                     {resume.skills.soft.length > 0 && <p style={{ fontSize: '10pt', margin: '0' }}><span style={{ fontWeight: '600', color: '#1a4d8f' }}>Soft Skills: </span><span style={{ color: '#000' }}>{resume.skills.soft.join(", ")}</span></p>}
                   </div>
                 )}
