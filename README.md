@@ -5,6 +5,7 @@ ResumeAI is a full-stack web application that helps users create ATS-friendly re
 It combines a resume builder + ATS analyzer in one platform to improve job application success.
 
 ✨ Features
+
 📝 Create professional resumes using a simple form
 👀 Live resume preview while editing
 📄 Download resume as ATS-friendly PDF
@@ -13,6 +14,9 @@ It combines a resume builder + ATS analyzer in one platform to improve job appli
 🔍 See matched & missing keywords
 💡 Get improvement suggestions
 🔐 Secure login & authentication
+
+
+
 🛠 Tech Stack
 
 Frontend
@@ -21,11 +25,14 @@ React.js
 Tailwind CSS
 React Router
 
+
 Backend
 
 Node.js
 Express.js
 MongoDB
+
+
 
 Other Tools
 
@@ -47,6 +54,8 @@ ResumeAI/
 │   └── middleware/
 │
 └── README.md
+
+
 ⚙️ Installation
 1. Clone the repository
 git clone https://github.com/your-username/resumeai.git
@@ -61,19 +70,26 @@ MONGO_URI=your_mongodb_uri
 JWT_SECRET=your_secret_key
 GEMINI_API_KEY=your_api_key
 
+
 Run backend:
 
 npm run dev
+
+
 3. Setup Frontend
 cd frontend
 npm install
 npm run dev
+
+
 🚀 Usage
 Register / Login
 Create your resume
 Download PDF
 Upload resume for ATS analysis
 Improve based on suggestions
+
+
 🔐 API Endpoints
 Auth
 POST /api/auth/register
@@ -82,23 +98,22 @@ ATS Analysis
 POST /api/ats/analyze
 Requires JWT token
 Accepts PDF + job description
+
 ⚠️ Limitations
 Only supports PDF resumes
 Scanned PDFs may not work properly
 Depends on Gemini API (rate limits possible)
+
+
 🔮 Future Improvements
 Multiple resume templates
 Cover letter generator
 LinkedIn integration
 Mobile version
+
+
 👨‍💻 Author
 
 Bishal Tiwari
 
-⭐ Support
 
-If you like this project:
-
-Star ⭐ the repo
-Fork 🍴 it
-Share 📢
