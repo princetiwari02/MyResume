@@ -1,58 +1,72 @@
-// server/routes/ats.js
 import express from "express";
-import { protect } from "../middleware/auth.js";
-import { GoogleGenerativeAI } from "@google/generative-ai";
 import multer from "multer";
 import pdf from "pdf-parse/lib/pdf-parse.js";
 import dotenv from "dotenv";
+import { GoogleGenAI } from "@google/genai";
+import { protect } from "../middleware/auth.js";
 
 dotenv.config();
 
 const router = express.Router();
-const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
 
-// Multer: accept PDF in memory
+const ai = new GoogleGenAI({
+  apiKey: process.env.GEMINI_API_KEY,
+});
+
 const upload = multer({
   storage: multer.memoryStorage(),
   fileFilter: (req, file, cb) => {
     if (file.mimetype === "application/pdf") cb(null, true);
     else cb(new Error("Only PDF files are allowed"));
   },
-  limits: { fileSize: 5 * 1024 * 1024 }, // 5 MB
+  limits: { fileSize: 5 * 1024 * 1024 },
 });
 
-// Extract text from PDF buffer
+const ATS_MODELS = [
+  "gemini-2.5-flash",
+  "gemini-2.5-flash-lite",
+  "gemini-2.0-flash",
+  "gemini-3-flash-preview",
+  "gemini-3.1-flash-lite-preview",
+  "gemini-2.5-pro",
+];
+
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
 async function extractTextFromPDF(buffer) {
   try {
     const data = await pdf(buffer);
-    return (data && data.text) ? data.text : "";
-  } catch (err) {
+    return data?.text?.trim() || "";
+  } catch (error) {
+    console.error("PDF extraction failed:", error);
     throw new Error("Failed to extract text from PDF");
   }
 }
 
-// Safely extract JSON object from free-form text
 function extractJSONFromText(text) {
   if (!text || typeof text !== "string") return null;
 
-  // Try quick match for a JSON object block
-  const jsonMatch = text.match(/\{[\s\S]*\}/);
-  if (jsonMatch) {
-    try {
-      return JSON.parse(jsonMatch[0]);
-    } catch (err) {
-      // fall through to aggressive attempts
-    }
+  const cleaned = text
+    .replace(/```json/gi, "")
+    .replace(/```/g, "")
+    .trim();
+
+  try {
+    return JSON.parse(cleaned);
+  } catch {
+    // keep trying below
   }
 
-  // Aggressive: find first "{" and last "}" and try to parse
-  const first = text.indexOf("{");
-  const last = text.lastIndexOf("}");
+  const first = cleaned.indexOf("{");
+  const last = cleaned.lastIndexOf("}");
+
   if (first !== -1 && last !== -1 && last > first) {
-    const substring = text.slice(first, last + 1);
+    const slice = cleaned.slice(first, last + 1);
     try {
-      return JSON.parse(substring);
-    } catch (err) {
+      return JSON.parse(slice);
+    } catch {
       return null;
     }
   }
@@ -60,143 +74,243 @@ function extractJSONFromText(text) {
   return null;
 }
 
-// Attempt to generate with a list of candidate models.
-// It will try each model once (with optional small retry), and return the first successful text + model name.
-// If all fail, throws an Error with details.
-async function tryGenerateWithModels(prompt, options = {}) {
-  // Candidate models in order of preference - adjust if Google publishes different recommended names
-  const candidateModels = [
-    "gemini-2.5-flash",
-    "gemini-2.5-pro",
-    "gemini-2.0-flash",
-    "gemini-1.5-flash",
-    "gemini-1.5-pro",
-    "gemini-1.5-flash-latest",
-  ];
+function normalizeAnalysis(parsed) {
+  const score = Math.min(100, Math.max(0, Number(parsed?.score) || 0));
 
-  const maxAttemptsPerModel = options.attemptsPerModel || 1;
+  let matchLevel = "Poor";
+  if (score >= 80) matchLevel = "Excellent";
+  else if (score >= 60) matchLevel = "Good";
+  else if (score >= 40) matchLevel = "Fair";
 
+  return {
+    score,
+    matchLevel: parsed?.matchLevel || matchLevel,
+    missingKeywords: Array.isArray(parsed?.missingKeywords)
+      ? parsed.missingKeywords.filter(Boolean)
+      : [],
+    strengths: Array.isArray(parsed?.strengths)
+      ? parsed.strengths.filter(Boolean)
+      : [],
+    improvements: Array.isArray(parsed?.improvements)
+      ? parsed.improvements.filter(Boolean)
+      : [],
+  };
+}
+
+function isRetryableError(error) {
+  const status = Number(error?.status || error?.code || 0);
+  const msg = String(error?.message || "").toLowerCase();
+
+  return (
+    status === 429 ||
+    status === 500 ||
+    status === 502 ||
+    status === 503 ||
+    status === 504 ||
+    msg.includes("high demand") ||
+    msg.includes("temporarily unavailable") ||
+    msg.includes("quota") ||
+    msg.includes("rate limit") ||
+    msg.includes("service unavailable")
+  );
+}
+
+function mapGeminiError(error) {
+  const status = Number(error?.status || error?.code || 0);
+  const msg = String(error?.message || "").toLowerCase();
+
+  if (msg.includes("api key") || status === 401) {
+    return {
+      statusCode: 502,
+      message: "AI service misconfigured: invalid API key.",
+    };
+  }
+
+  if (status === 403 || msg.includes("permission") || msg.includes("forbidden")) {
+    return {
+      statusCode: 502,
+      message: "AI service permission denied for this API key or project.",
+    };
+  }
+
+  if (status === 404 || msg.includes("not found") || msg.includes("unsupported")) {
+    return {
+      statusCode: 502,
+      message: "AI model not available for this API key or SDK configuration.",
+    };
+  }
+
+  if (status === 429 || msg.includes("quota") || msg.includes("rate limit")) {
+    return {
+      statusCode: 502,
+      message: "AI service quota exceeded or rate limited. Please try again later.",
+    };
+  }
+
+  if (status === 503 || msg.includes("high demand") || msg.includes("unavailable")) {
+    return {
+      statusCode: 502,
+      message: "AI service is temporarily busy. Please try again later.",
+    };
+  }
+
+  return {
+    statusCode: 502,
+    message: "AI service unavailable or models not supported. Please try again later.",
+  };
+}
+
+async function generateWithFallback(prompt) {
   const errors = [];
 
-  for (const modelName of candidateModels) {
-    for (let attempt = 1; attempt <= maxAttemptsPerModel; attempt++) {
+  for (const model of ATS_MODELS) {
+    for (let attempt = 1; attempt <= 3; attempt++) {
       try {
-        console.log(`Trying model ${modelName} (attempt ${attempt})`);
-        const model = genAI.getGenerativeModel({ model: modelName });
+        console.log(`Trying ${model} (attempt ${attempt})`);
 
-        // generateContent returns an object with response; follow the SDK pattern
-        const result = await model.generateContent(prompt);
-        const response = await result.response;
-        const text = await response.text();
+        const response = await ai.models.generateContent({
+          model,
+          contents: prompt,
+          config: {
+            temperature: 0.2,
+            maxOutputTokens: 900,
+            responseMimeType: "application/json",
+          },
+        });
 
-        // if text empty, treat as failure
-        if (!text || typeof text !== "string" || text.trim().length === 0) {
-          throw new Error(`Empty response from model ${modelName}`);
+        const text = response?.text?.trim();
+
+        if (!text) {
+          throw new Error(`Empty response from ${model}`);
         }
 
-        console.log(`Model ${modelName} succeeded`);
-        return { text, model: modelName };
-      } catch (err) {
-        // Log and continue trying next model
-        console.error(`Model ${modelName} attempt ${attempt} failed:`, err?.message || err);
-        errors.push({ model: modelName, attempt, message: err?.message || String(err), err });
-        // if API key invalid, stop early and throw specific error
-        const msg = String(err?.message || err || "");
-        if (msg.includes("API key not valid") || msg.includes("API_KEY_INVALID") || msg.includes("401") || msg.includes("403")) {
-          const e = new Error("AI API key invalid or unauthorized");
-          e.type = "API_KEY_INVALID";
-          e.original = err;
-          throw e;
+        console.log(`Success with ${model}`);
+        return { text, model };
+      } catch (error) {
+        const info = {
+          model,
+          attempt,
+          status: error?.status || error?.code || null,
+          message: error?.message || String(error),
+        };
+
+        console.error("Gemini call failed:", info);
+        errors.push(info);
+
+        if (attempt < 3 && isRetryableError(error)) {
+          await sleep(1500 * attempt);
+          continue;
         }
-        // if 404 for model not found, continue to next model
-        // otherwise continue as well
+
+        break;
       }
     }
   }
 
-  const err = new Error("All Gemini model attempts failed");
+  const err = new Error("All Gemini models failed");
   err.details = errors;
   throw err;
 }
 
-// POST /api/ats/analyze
-// Protect middleware used to require authentication (keeps your existing security)
+router.get("/gemini-test", async (req, res) => {
+  try {
+    const result = await generateWithFallback(
+      `Reply ONLY with JSON: {"ok": true, "message": "Gemini is working"}`
+    );
+
+    return res.json({
+      success: true,
+      model: result.model,
+      raw: result.text,
+    });
+  } catch (error) {
+    console.error("Gemini test failed:", error?.details || error);
+    const mapped = mapGeminiError(error);
+    return res.status(mapped.statusCode).json({
+      success: false,
+      message: mapped.message,
+      debug: error?.details || error?.message || "Unknown Gemini error",
+    });
+  }
+});
+
 router.post("/analyze", protect, upload.single("resume"), async (req, res) => {
   try {
     const { jobDescription } = req.body;
 
-    // Basic validation
     if (!req.file) {
       return res.status(400).json({ message: "Resume PDF is required" });
     }
+
     if (!jobDescription || !jobDescription.trim()) {
       return res.status(400).json({ message: "Job description is required" });
     }
 
-    // Extract text from PDF
     const resumeText = await extractTextFromPDF(req.file.buffer);
-    if (!resumeText || resumeText.trim().length < 50) {
+
+    if (!resumeText || resumeText.length < 50) {
       return res.status(400).json({
         message: "PDF contains very little text. Please upload a valid text-based PDF resume.",
       });
     }
 
-    // Build a clear prompt asking for strict JSON only
-    const prompt = `You are an expert ATS analyzer. Respond ONLY in JSON (no markdown/no commentary).
+    const prompt = `
+You are an expert ATS resume analyzer.
+
+Compare the resume against the job description and respond ONLY with valid JSON.
+No markdown. No explanation. No extra text.
+
+Scoring rules:
+- score: number from 0 to 100
+- matchLevel: one of "Excellent", "Good", "Fair", "Poor"
+- missingKeywords: important keywords or skills missing from the resume
+- strengths: short points about what matches well
+- improvements: short actionable suggestions
+
 Job Description:
 ${jobDescription}
 
 Resume:
 ${resumeText}
 
-Return exactly a JSON object with:
+Return exactly:
 {
-  "score": <number 0-100>,
-  "matchLevel": "<Excellent|Good|Fair|Poor>",
-  "missingKeywords": ["..."],
-  "strengths": ["..."],
-  "improvements": ["..."]
+  "score": 0,
+  "matchLevel": "Poor",
+  "missingKeywords": [],
+  "strengths": [],
+  "improvements": []
 }
-Be precise and do not include any extra fields or explanations.
-`;
+`.trim();
 
-    // Call AI (tries multiple models until one succeeds)
-    let generation;
-    try {
-      generation = await tryGenerateWithModels(prompt, { attemptsPerModel: 1 });
-    } catch (err) {
-      // If the error indicates API key issue, respond with instructive message
-      if (err && err.type === "API_KEY_INVALID") {
-        console.error("Gemini API key invalid:", err.original || err);
-        return res.status(502).json({ message: "AI service misconfigured: invalid API key." });
-      }
-      console.error("All Gemini attempts failed:", err);
-      return res.status(502).json({ message: "AI service unavailable or models not supported. Please try again later." });
-    }
+    const generation = await generateWithFallback(prompt);
+    const parsed = extractJSONFromText(generation.text);
 
-    const { text: rawText, model: usedModel } = generation;
-    // Clean common fences and try to parse JSON
-    const cleaned = (rawText || "").replace(/```json|```/g, "").trim();
-
-    const parsed = extractJSONFromText(cleaned);
     if (!parsed) {
-      console.error("Failed to parse JSON from AI response. Raw:", cleaned.slice(0, 1000));
-      return res.status(500).json({ message: "Failed to parse AI response. Please try again." });
+      console.error("Could not parse Gemini JSON:", generation.text);
+      return res.status(500).json({
+        message: "Failed to parse AI response. Please try again.",
+      });
     }
 
-    // Normalize fields
-    const analysis = {
-      score: Math.min(100, Math.max(0, Number(parsed.score) || 0)),
-      matchLevel: parsed.matchLevel || (parsed.score >= 80 ? "Excellent" : parsed.score >= 60 ? "Good" : parsed.score >= 40 ? "Fair" : "Poor"),
-      missingKeywords: Array.isArray(parsed.missingKeywords) ? parsed.missingKeywords : [],
-      strengths: Array.isArray(parsed.strengths) ? parsed.strengths : [],
-      improvements: Array.isArray(parsed.improvements) ? parsed.improvements : [],
-    };
+    const analysis = normalizeAnalysis(parsed);
 
-    return res.json({ success: true, analysis, model: usedModel });
+    return res.json({
+      success: true,
+      analysis,
+      model: generation.model,
+    });
   } catch (error) {
-    console.error("ATS Analysis Error (unexpected):", error);
-    return res.status(500).json({ message: "Failed to analyze resume", error: error?.message || String(error) });
+    console.error("ATS analysis failed:", error?.details || error);
+
+    if (error?.message === "Failed to extract text from PDF") {
+      return res.status(500).json({ message: error.message });
+    }
+
+    const mapped = mapGeminiError(error);
+    return res.status(mapped.statusCode).json({
+      message: mapped.message,
+    });
   }
 });
 

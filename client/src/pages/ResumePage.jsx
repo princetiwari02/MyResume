@@ -1,77 +1,94 @@
 import { useState, useEffect } from "react"
 import { useNavigate } from "react-router-dom"
 import { FileText, Plus, X, Sparkles } from "lucide-react"
+import { useAuth } from "../context/AuthContext"
+
+const emptyResume = {
+  personal: {
+    name: "",
+    email: "",
+    phone: "",
+    linkedin: "",
+    github: "",
+    portfolio: "",
+  },
+  summary: "",
+  skills: {
+    languages: [],
+    frameworks: [],
+    tools: [],
+    soft: [],
+  },
+  projects: [],
+  achievements: [],
+  education: [],
+  experience: [],
+  certificates: [],
+}
 
 function ResumePage() {
   const navigate = useNavigate()
-  
-  // Load existing data if coming from edit
-  const [resume, setResume] = useState(() => {
-    const savedData = localStorage.getItem('resumeData')
-    if (savedData) {
-      const parsed = JSON.parse(savedData)
-      // Handle old skills format (array) vs new format (object)
-      if (Array.isArray(parsed.skills)) {
-        parsed.skills = {
-          languages: [],
-          frameworks: parsed.skills || [],
-          tools: [],
-          soft: []
-        }
-      }
-      // Ensure skills object has all properties
-      if (!parsed.skills) {
-        parsed.skills = { languages: [], frameworks: [], tools: [], soft: [] }
-      } else {
-        parsed.skills = {
-          languages: parsed.skills.languages || [],
-          frameworks: parsed.skills.frameworks || [],
-          tools: parsed.skills.tools || [],
-          soft: parsed.skills.soft || []
-        }
-      }
-      // Ensure certificates exists
-      if (!parsed.certificates) {
-        parsed.certificates = []
-      }
-      return parsed
-    }
-    return {
-      personal: {
-        name: "",
-        email: "",
-        phone: "",
-        linkedin: "",
-        github: "",
-        portfolio: "",
-      },
-      summary: "",
-      skills: {
+  const { user } = useAuth()
+
+  const storageKey = user?.uid ? `resumeData_${user.uid}` : "resumeData_guest"
+
+  const [resume, setResume] = useState(emptyResume)
+  const [isDraftLoaded, setIsDraftLoaded] = useState(false)
+
+  const normalizeResumeData = (parsed) => {
+    if (!parsed || typeof parsed !== "object") return emptyResume
+
+    const normalized = { ...emptyResume, ...parsed }
+
+    if (Array.isArray(normalized.skills)) {
+      normalized.skills = {
         languages: [],
-        frameworks: [],
+        frameworks: normalized.skills || [],
         tools: [],
-        soft: []
-      },
-      projects: [],
-      achievements: [],
-      education: [],
-      experience: [],
-      certificates: []
+        soft: [],
+      }
     }
-  })
+
+    normalized.skills = {
+      languages: normalized.skills?.languages || [],
+      frameworks: normalized.skills?.frameworks || [],
+      tools: normalized.skills?.tools || [],
+      soft: normalized.skills?.soft || [],
+    }
+
+    normalized.certificates = normalized.certificates || []
+    normalized.projects = normalized.projects || []
+    normalized.achievements = normalized.achievements || []
+    normalized.education = normalized.education || []
+    normalized.experience = normalized.experience || []
+
+    normalized.personal = {
+      name: normalized.personal?.name || "",
+      email: normalized.personal?.email || "",
+      phone: normalized.personal?.phone || "",
+      linkedin: normalized.personal?.linkedin || "",
+      github: normalized.personal?.github || "",
+      portfolio: normalized.personal?.portfolio || "",
+    }
+
+    normalized.summary = normalized.summary || ""
+
+    return normalized
+  }
 
   const [languageInput, setLanguageInput] = useState("")
   const [frameworkInput, setFrameworkInput] = useState("")
   const [toolInput, setToolInput] = useState("")
   const [softSkillInput, setSoftSkillInput] = useState("")
-  
+
   const [projectInput, setProjectInput] = useState({
     title: "",
     description: "",
     tech: "",
     duration: "",
-    liveLink: ""
+    liveLink: "",
   })
+
   const [achievementInput, setAchievementInput] = useState("")
   const [certificateInput, setCertificateInput] = useState("")
   const [educationInput, setEducationInput] = useState({
@@ -79,7 +96,7 @@ function ResumePage() {
     institution: "",
     year: "",
     score: "",
-    location: ""
+    location: "",
   })
   const [experienceInput, setExperienceInput] = useState({
     title: "",
@@ -88,37 +105,70 @@ function ResumePage() {
     description: "",
   })
 
-  // Keyword highlighting
-  const highlightKeywords = (text) => {
-    if (!text) return text
-    const keywords = [
-      'React', 'MERN', 'MongoDB', 'Node.js', 'Express', 'JWT', 
-      'Authentication', 'REST API', 'Tailwind', 'MySQL', 'Django',
-      'JavaScript', 'Python', 'HTML', 'CSS', 'Bootstrap', 'SQL',
-      'Firebase', 'Git', 'GitHub', 'API', 'TypeScript', 'Next.js',
-      'Redux', 'Vue', 'Angular', 'PostgreSQL', 'Docker', 'AWS',
-      'data structure', 'visualizer', 'e-commerce', 'website',
-      'full-stack', 'dynamic', 'shopping cart', 'checkout',
-      'online learning platform', 'responsive', 'interface'
-    ]
-    
-    let highlightedText = text
-    keywords.forEach(keyword => {
-      const regex = new RegExp(`\\b${keyword}\\b`, 'gi')
-      highlightedText = highlightedText.replace(regex, `<strong>${keyword}</strong>`)
-    })
-    return highlightedText
-  }
+  useEffect(() => {
+    setIsDraftLoaded(false)
+
+    const savedData = sessionStorage.getItem(storageKey)
+
+    if (savedData) {
+      try {
+        const parsed = JSON.parse(savedData)
+        setResume(normalizeResumeData(parsed))
+      } catch {
+        setResume(emptyResume)
+      }
+    } else {
+      setResume(emptyResume)
+    }
+
+    setIsDraftLoaded(true)
+  }, [storageKey])
+
+  useEffect(() => {
+    if (!isDraftLoaded) return
+    sessionStorage.setItem(storageKey, JSON.stringify(resume))
+  }, [resume, storageKey, isDraftLoaded])
 
   const handleGenerateResume = () => {
-    localStorage.setItem('resumeData', JSON.stringify(resume))
-    navigate('/resume/preview')
+    sessionStorage.setItem(storageKey, JSON.stringify(resume))
+    navigate("/resume/preview")
+  }
+
+  const handleClearForm = () => {
+    if (window.confirm("Are you sure you want to clear all form data?")) {
+      sessionStorage.removeItem(storageKey)
+      setResume(emptyResume)
+      setLanguageInput("")
+      setFrameworkInput("")
+      setToolInput("")
+      setSoftSkillInput("")
+      setProjectInput({
+        title: "",
+        description: "",
+        tech: "",
+        duration: "",
+        liveLink: "",
+      })
+      setAchievementInput("")
+      setCertificateInput("")
+      setEducationInput({
+        degree: "",
+        institution: "",
+        year: "",
+        score: "",
+        location: "",
+      })
+      setExperienceInput({
+        title: "",
+        company: "",
+        duration: "",
+        description: "",
+      })
+    }
   }
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-[#050d1a] via-[#0a1628] to-[#050d1a] text-white">
-      
-      {/* Header */}
       <div className="bg-[#0B1B2B] border-b border-white/10 sticky top-0 z-10 backdrop-blur-lg bg-opacity-80">
         <div className="max-w-7xl mx-auto px-6 py-4 flex justify-between items-center">
           <div className="flex items-center gap-3">
@@ -129,18 +179,13 @@ function ResumePage() {
           </div>
           <div className="flex gap-3">
             <button
-              onClick={() => {
-                if (window.confirm('Are you sure you want to clear all form data?')) {
-                  localStorage.removeItem('resumeData')
-                  window.location.reload()
-                }
-              }}
+              onClick={handleClearForm}
               className="px-4 py-2 bg-red-500/10 hover:bg-red-500/20 rounded-lg border border-red-500/30 transition-all text-red-400"
             >
               Clear Form
             </button>
             <button
-              onClick={() => navigate('/')}
+              onClick={() => navigate("/")}
               className="px-4 py-2 bg-white/5 hover:bg-white/10 rounded-lg border border-white/10 transition-all"
             >
               ← Back to Home
@@ -150,8 +195,6 @@ function ResumePage() {
       </div>
 
       <div className="max-w-7xl mx-auto px-6 py-10">
-        
-        {/* Personal Info */}
         <section className="mb-10 bg-[#0B1B2B] p-8 rounded-2xl border border-white/10">
           <h2 className="text-2xl font-semibold mb-6 flex items-center gap-2">
             <div className="w-8 h-8 bg-blue-500/20 rounded-lg flex items-center justify-center">
@@ -230,7 +273,6 @@ function ResumePage() {
           </div>
         </section>
 
-        {/* Professional Summary */}
         <section className="mb-10 bg-[#0B1B2B] p-8 rounded-2xl border border-white/10">
           <h2 className="text-2xl font-semibold mb-6 flex items-center gap-2">
             <div className="w-8 h-8 bg-blue-500/20 rounded-lg flex items-center justify-center">
@@ -247,7 +289,6 @@ function ResumePage() {
           />
         </section>
 
-        {/* Skills - 4 Categories */}
         <section className="mb-10 bg-[#0B1B2B] p-8 rounded-2xl border border-white/10">
           <h2 className="text-2xl font-semibold mb-6 flex items-center gap-2">
             <div className="w-8 h-8 bg-blue-500/20 rounded-lg flex items-center justify-center">
@@ -256,7 +297,6 @@ function ResumePage() {
             Skills
           </h2>
 
-          {/* Languages */}
           <div className="mb-6">
             <h3 className="text-lg font-semibold text-blue-300 mb-3">Languages</h3>
             <div className="flex gap-3 mb-3">
@@ -269,7 +309,10 @@ function ResumePage() {
                   if (e.key === "Enter" && languageInput.trim()) {
                     setResume({
                       ...resume,
-                      skills: { ...resume.skills, languages: [...resume.skills.languages, languageInput.trim()] }
+                      skills: {
+                        ...resume.skills,
+                        languages: [...resume.skills.languages, languageInput.trim()],
+                      },
                     })
                     setLanguageInput("")
                   }
@@ -280,7 +323,10 @@ function ResumePage() {
                   if (!languageInput.trim()) return
                   setResume({
                     ...resume,
-                    skills: { ...resume.skills, languages: [...resume.skills.languages, languageInput.trim()] }
+                    skills: {
+                      ...resume.skills,
+                      languages: [...resume.skills.languages, languageInput.trim()],
+                    },
                   })
                   setLanguageInput("")
                 }}
@@ -291,9 +337,22 @@ function ResumePage() {
             </div>
             <div className="flex flex-wrap gap-3">
               {resume.skills.languages.map((lang, index) => (
-                <div key={index} className="flex items-center gap-2 bg-blue-500/20 text-blue-300 px-4 py-2 rounded-full border border-blue-500/30">
+                <div
+                  key={index}
+                  className="flex items-center gap-2 bg-blue-500/20 text-blue-300 px-4 py-2 rounded-full border border-blue-500/30"
+                >
                   <span>{lang}</span>
-                  <button onClick={() => setResume({ ...resume, skills: { ...resume.skills, languages: resume.skills.languages.filter((_, i) => i !== index) } })}>
+                  <button
+                    onClick={() =>
+                      setResume({
+                        ...resume,
+                        skills: {
+                          ...resume.skills,
+                          languages: resume.skills.languages.filter((_, i) => i !== index),
+                        },
+                      })
+                    }
+                  >
                     <X className="w-4 h-4" />
                   </button>
                 </div>
@@ -301,7 +360,6 @@ function ResumePage() {
             </div>
           </div>
 
-          {/* Frameworks */}
           <div className="mb-6">
             <h3 className="text-lg font-semibold text-blue-300 mb-3">Frameworks & Technologies</h3>
             <div className="flex gap-3 mb-3">
@@ -314,7 +372,10 @@ function ResumePage() {
                   if (e.key === "Enter" && frameworkInput.trim()) {
                     setResume({
                       ...resume,
-                      skills: { ...resume.skills, frameworks: [...resume.skills.frameworks, frameworkInput.trim()] }
+                      skills: {
+                        ...resume.skills,
+                        frameworks: [...resume.skills.frameworks, frameworkInput.trim()],
+                      },
                     })
                     setFrameworkInput("")
                   }
@@ -325,7 +386,10 @@ function ResumePage() {
                   if (!frameworkInput.trim()) return
                   setResume({
                     ...resume,
-                    skills: { ...resume.skills, frameworks: [...resume.skills.frameworks, frameworkInput.trim()] }
+                    skills: {
+                      ...resume.skills,
+                      frameworks: [...resume.skills.frameworks, frameworkInput.trim()],
+                    },
                   })
                   setFrameworkInput("")
                 }}
@@ -336,9 +400,22 @@ function ResumePage() {
             </div>
             <div className="flex flex-wrap gap-3">
               {resume.skills.frameworks.map((fw, index) => (
-                <div key={index} className="flex items-center gap-2 bg-blue-500/20 text-blue-300 px-4 py-2 rounded-full border border-blue-500/30">
+                <div
+                  key={index}
+                  className="flex items-center gap-2 bg-blue-500/20 text-blue-300 px-4 py-2 rounded-full border border-blue-500/30"
+                >
                   <span>{fw}</span>
-                  <button onClick={() => setResume({ ...resume, skills: { ...resume.skills, frameworks: resume.skills.frameworks.filter((_, i) => i !== index) } })}>
+                  <button
+                    onClick={() =>
+                      setResume({
+                        ...resume,
+                        skills: {
+                          ...resume.skills,
+                          frameworks: resume.skills.frameworks.filter((_, i) => i !== index),
+                        },
+                      })
+                    }
+                  >
                     <X className="w-4 h-4" />
                   </button>
                 </div>
@@ -346,7 +423,6 @@ function ResumePage() {
             </div>
           </div>
 
-          {/* Tools/Databases */}
           <div className="mb-6">
             <h3 className="text-lg font-semibold text-blue-300 mb-3">Tools & Databases</h3>
             <div className="flex gap-3 mb-3">
@@ -359,7 +435,10 @@ function ResumePage() {
                   if (e.key === "Enter" && toolInput.trim()) {
                     setResume({
                       ...resume,
-                      skills: { ...resume.skills, tools: [...resume.skills.tools, toolInput.trim()] }
+                      skills: {
+                        ...resume.skills,
+                        tools: [...resume.skills.tools, toolInput.trim()],
+                      },
                     })
                     setToolInput("")
                   }
@@ -370,7 +449,10 @@ function ResumePage() {
                   if (!toolInput.trim()) return
                   setResume({
                     ...resume,
-                    skills: { ...resume.skills, tools: [...resume.skills.tools, toolInput.trim()] }
+                    skills: {
+                      ...resume.skills,
+                      tools: [...resume.skills.tools, toolInput.trim()],
+                    },
                   })
                   setToolInput("")
                 }}
@@ -381,9 +463,22 @@ function ResumePage() {
             </div>
             <div className="flex flex-wrap gap-3">
               {resume.skills.tools.map((tool, index) => (
-                <div key={index} className="flex items-center gap-2 bg-blue-500/20 text-blue-300 px-4 py-2 rounded-full border border-blue-500/30">
+                <div
+                  key={index}
+                  className="flex items-center gap-2 bg-blue-500/20 text-blue-300 px-4 py-2 rounded-full border border-blue-500/30"
+                >
                   <span>{tool}</span>
-                  <button onClick={() => setResume({ ...resume, skills: { ...resume.skills, tools: resume.skills.tools.filter((_, i) => i !== index) } })}>
+                  <button
+                    onClick={() =>
+                      setResume({
+                        ...resume,
+                        skills: {
+                          ...resume.skills,
+                          tools: resume.skills.tools.filter((_, i) => i !== index),
+                        },
+                      })
+                    }
+                  >
                     <X className="w-4 h-4" />
                   </button>
                 </div>
@@ -391,7 +486,6 @@ function ResumePage() {
             </div>
           </div>
 
-          {/* Soft Skills */}
           <div>
             <h3 className="text-lg font-semibold text-blue-300 mb-3">Soft Skills</h3>
             <div className="flex gap-3 mb-3">
@@ -404,7 +498,10 @@ function ResumePage() {
                   if (e.key === "Enter" && softSkillInput.trim()) {
                     setResume({
                       ...resume,
-                      skills: { ...resume.skills, soft: [...resume.skills.soft, softSkillInput.trim()] }
+                      skills: {
+                        ...resume.skills,
+                        soft: [...resume.skills.soft, softSkillInput.trim()],
+                      },
                     })
                     setSoftSkillInput("")
                   }
@@ -415,7 +512,10 @@ function ResumePage() {
                   if (!softSkillInput.trim()) return
                   setResume({
                     ...resume,
-                    skills: { ...resume.skills, soft: [...resume.skills.soft, softSkillInput.trim()] }
+                    skills: {
+                      ...resume.skills,
+                      soft: [...resume.skills.soft, softSkillInput.trim()],
+                    },
                   })
                   setSoftSkillInput("")
                 }}
@@ -426,9 +526,22 @@ function ResumePage() {
             </div>
             <div className="flex flex-wrap gap-3">
               {resume.skills.soft.map((soft, index) => (
-                <div key={index} className="flex items-center gap-2 bg-blue-500/20 text-blue-300 px-4 py-2 rounded-full border border-blue-500/30">
+                <div
+                  key={index}
+                  className="flex items-center gap-2 bg-blue-500/20 text-blue-300 px-4 py-2 rounded-full border border-blue-500/30"
+                >
                   <span>{soft}</span>
-                  <button onClick={() => setResume({ ...resume, skills: { ...resume.skills, soft: resume.skills.soft.filter((_, i) => i !== index) } })}>
+                  <button
+                    onClick={() =>
+                      setResume({
+                        ...resume,
+                        skills: {
+                          ...resume.skills,
+                          soft: resume.skills.soft.filter((_, i) => i !== index),
+                        },
+                      })
+                    }
+                  >
                     <X className="w-4 h-4" />
                   </button>
                 </div>
@@ -437,7 +550,6 @@ function ResumePage() {
           </div>
         </section>
 
-        {/* Internship/Training */}
         <section className="mb-10 bg-[#0B1B2B] p-8 rounded-2xl border border-white/10">
           <h2 className="text-2xl font-semibold mb-6 flex items-center gap-2">
             <div className="w-8 h-8 bg-blue-500/20 rounded-lg flex items-center justify-center">
@@ -485,19 +597,28 @@ function ResumePage() {
           </div>
           <div className="space-y-4">
             {resume.experience.map((exp, index) => (
-              <div key={index} className="bg-gradient-to-r from-blue-500/5 to-blue-600/5 p-6 rounded-xl relative border border-blue-500/20">
-                <button onClick={() => setResume({ ...resume, experience: resume.experience.filter((_, i) => i !== index) })} className="absolute top-4 right-4 text-red-400">
+              <div
+                key={index}
+                className="bg-gradient-to-r from-blue-500/5 to-blue-600/5 p-6 rounded-xl relative border border-blue-500/20"
+              >
+                <button
+                  onClick={() =>
+                    setResume({ ...resume, experience: resume.experience.filter((_, i) => i !== index) })
+                  }
+                  className="absolute top-4 right-4 text-red-400"
+                >
                   <X className="w-5 h-5" />
                 </button>
                 <h3 className="text-lg font-semibold text-blue-300">{exp.company}</h3>
-                <p className="text-gray-400 mb-2">{exp.title} | {exp.duration}</p>
+                <p className="text-gray-400 mb-2">
+                  {exp.title} | {exp.duration}
+                </p>
                 <p className="text-gray-300 text-sm whitespace-pre-line">{exp.description}</p>
               </div>
             ))}
           </div>
         </section>
 
-        {/* Projects */}
         <section className="mb-10 bg-[#0B1B2B] p-8 rounded-2xl border border-white/10">
           <h2 className="text-2xl font-semibold mb-6 flex items-center gap-2">
             <div className="w-8 h-8 bg-blue-500/20 rounded-lg flex items-center justify-center">
@@ -551,8 +672,16 @@ function ResumePage() {
           </div>
           <div className="space-y-4">
             {resume.projects.map((project, index) => (
-              <div key={index} className="bg-gradient-to-r from-blue-500/5 to-blue-600/5 p-6 rounded-xl relative border border-blue-500/20">
-                <button onClick={() => setResume({ ...resume, projects: resume.projects.filter((_, i) => i !== index) })} className="absolute top-4 right-4 text-red-400">
+              <div
+                key={index}
+                className="bg-gradient-to-r from-blue-500/5 to-blue-600/5 p-6 rounded-xl relative border border-blue-500/20"
+              >
+                <button
+                  onClick={() =>
+                    setResume({ ...resume, projects: resume.projects.filter((_, i) => i !== index) })
+                  }
+                  className="absolute top-4 right-4 text-red-400"
+                >
                   <X className="w-5 h-5" />
                 </button>
                 <h3 className="text-lg font-semibold text-blue-300">{project.title}</h3>
@@ -561,7 +690,12 @@ function ResumePage() {
                 {project.liveLink && (
                   <p className="text-sm mb-2">
                     <span className="text-blue-400">Live: </span>
-                    <a href={project.liveLink} target="_blank" rel="noopener noreferrer" className="text-blue-500 underline hover:text-blue-400">
+                    <a
+                      href={project.liveLink}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-blue-500 underline hover:text-blue-400"
+                    >
                       {project.liveLink}
                     </a>
                   </p>
@@ -572,7 +706,6 @@ function ResumePage() {
           </div>
         </section>
 
-        {/* Education */}
         <section className="mb-10 bg-[#0B1B2B] p-8 rounded-2xl border border-white/10">
           <h2 className="text-2xl font-semibold mb-6 flex items-center gap-2">
             <div className="w-8 h-8 bg-blue-500/20 rounded-lg flex items-center justify-center">
@@ -627,8 +760,16 @@ function ResumePage() {
           </div>
           <div className="space-y-4">
             {resume.education.map((edu, index) => (
-              <div key={index} className="bg-gradient-to-r from-blue-500/5 to-blue-600/5 p-6 rounded-xl relative border border-blue-500/20">
-                <button onClick={() => setResume({ ...resume, education: resume.education.filter((_, i) => i !== index) })} className="absolute top-4 right-4 text-red-400">
+              <div
+                key={index}
+                className="bg-gradient-to-r from-blue-500/5 to-blue-600/5 p-6 rounded-xl relative border border-blue-500/20"
+              >
+                <button
+                  onClick={() =>
+                    setResume({ ...resume, education: resume.education.filter((_, i) => i !== index) })
+                  }
+                  className="absolute top-4 right-4 text-red-400"
+                >
                   <X className="w-5 h-5" />
                 </button>
                 <h3 className="text-lg font-semibold text-blue-300">{edu.institution}</h3>
@@ -643,7 +784,6 @@ function ResumePage() {
           </div>
         </section>
 
-        {/* Achievements */}
         <section className="mb-10 bg-[#0B1B2B] p-8 rounded-2xl border border-white/10">
           <h2 className="text-2xl font-semibold mb-6 flex items-center gap-2">
             <div className="w-8 h-8 bg-blue-500/20 rounded-lg flex items-center justify-center">
@@ -677,10 +817,18 @@ function ResumePage() {
           </div>
           <div className="space-y-2">
             {resume.achievements.map((achievement, index) => (
-              <div key={index} className="flex items-start gap-3 p-4 bg-gradient-to-r from-blue-500/5 to-blue-600/5 rounded-xl border border-blue-500/20 group">
+              <div
+                key={index}
+                className="flex items-start gap-3 p-4 bg-gradient-to-r from-blue-500/5 to-blue-600/5 rounded-xl border border-blue-500/20 group"
+              >
                 <div className="w-2 h-2 bg-blue-400 rounded-full mt-2 flex-shrink-0"></div>
                 <span className="flex-1 text-gray-300">{achievement}</span>
-                <button onClick={() => setResume({ ...resume, achievements: resume.achievements.filter((_, i) => i !== index) })} className="text-red-400 opacity-0 group-hover:opacity-100">
+                <button
+                  onClick={() =>
+                    setResume({ ...resume, achievements: resume.achievements.filter((_, i) => i !== index) })
+                  }
+                  className="text-red-400 opacity-0 group-hover:opacity-100"
+                >
                   <X className="w-4 h-4" />
                 </button>
               </div>
@@ -688,7 +836,6 @@ function ResumePage() {
           </div>
         </section>
 
-        {/* Certificates */}
         <section className="mb-10 bg-[#0B1B2B] p-8 rounded-2xl border border-white/10">
           <h2 className="text-2xl font-semibold mb-6 flex items-center gap-2">
             <div className="w-8 h-8 bg-blue-500/20 rounded-lg flex items-center justify-center">
@@ -722,10 +869,18 @@ function ResumePage() {
           </div>
           <div className="space-y-2">
             {resume.certificates.map((cert, index) => (
-              <div key={index} className="flex items-start gap-3 p-4 bg-gradient-to-r from-blue-500/5 to-blue-600/5 rounded-xl border border-blue-500/20 group">
+              <div
+                key={index}
+                className="flex items-start gap-3 p-4 bg-gradient-to-r from-blue-500/5 to-blue-600/5 rounded-xl border border-blue-500/20 group"
+              >
                 <div className="w-2 h-2 bg-blue-400 rounded-full mt-2 flex-shrink-0"></div>
                 <span className="flex-1 text-gray-300">{cert}</span>
-                <button onClick={() => setResume({ ...resume, certificates: resume.certificates.filter((_, i) => i !== index) })} className="text-red-400 opacity-0 group-hover:opacity-100">
+                <button
+                  onClick={() =>
+                    setResume({ ...resume, certificates: resume.certificates.filter((_, i) => i !== index) })
+                  }
+                  className="text-red-400 opacity-0 group-hover:opacity-100"
+                >
                   <X className="w-4 h-4" />
                 </button>
               </div>
@@ -733,172 +888,6 @@ function ResumePage() {
           </div>
         </section>
 
-        {/* Live Preview Section with COMPLETE resume and scrolling */}
-        <section className="mb-10">
-          <div className="bg-[#0B1B2B] p-8 rounded-2xl border border-white/10">
-            <h2 className="text-2xl font-semibold mb-6 flex items-center gap-2">
-              <div className="w-8 h-8 bg-blue-500/20 rounded-lg flex items-center justify-center">
-                <Sparkles className="w-5 h-5 text-blue-400" />
-              </div>
-              Live Preview
-            </h2>
-            
-            <div className="bg-white text-black rounded-xl shadow-2xl max-w-4xl mx-auto">
-              <div style={{ 
-                padding: '40px 50px', 
-                fontFamily: 'Calibri, Arial, sans-serif',
-                maxHeight: '650px',
-                overflowY: 'auto'
-              }}>
-                
-                {/* Name */}
-                <div style={{ marginBottom: '8px' }}>
-                  <h1 style={{ fontSize: '18pt', fontWeight: '700', color: '#0c1e5e', margin: '0' }}>
-                    {resume.personal.name || "Your Name"}
-                  </h1>
-                </div>
-
-                {/* Contact Info */}
-                <div style={{ fontSize: '9pt', marginBottom: '20px', display: 'flex', justifyContent: 'space-between' }}>
-                  <div>
-                    {resume.personal.linkedin && <div style={{ marginBottom: '2px' }}><span style={{ color: '#000', fontWeight: '600' }}>LinkedIn: </span><span style={{ color: '#1a4d8f' }}>{resume.personal.linkedin.replace('https://', '')}</span></div>}
-                    {resume.personal.email && <div style={{ marginBottom: '2px' }}><span style={{ color: '#000', fontWeight: '600' }}>Email: </span><span style={{ color: '#1a4d8f' }}>{resume.personal.email}</span></div>}
-                    {resume.personal.portfolio && <div><span style={{ color: '#000', fontWeight: '600' }}>Portfolio: </span><span style={{ color: '#1a4d8f' }}>{resume.personal.portfolio.replace('https://', '')}</span></div>}
-                  </div>
-                  <div>
-                    {resume.personal.github && <div style={{ marginBottom: '2px' }}><span style={{ color: '#000', fontWeight: '600' }}>Github: </span><span style={{ color: '#1a4d8f' }}>{resume.personal.github.replace('https://', '')}</span></div>}
-                    {resume.personal.phone && <div><span style={{ color: '#000', fontWeight: '600' }}>Mobile: </span><span style={{ color: '#1a4d8f' }}>{resume.personal.phone}</span></div>}
-                  </div>
-                </div>
-
-                {/* Professional Summary */}
-                {resume.summary && (
-                  <div style={{ marginBottom: '16px' }}>
-                    <h2 style={{ fontSize: '11pt', fontWeight: '700', textTransform: 'uppercase', color: '#0c1e5e', borderBottom: '1px solid #000', paddingBottom: '2px', marginBottom: '8px' }}>Professional Summary</h2>
-                    <p style={{ fontSize: '10pt', color: '#000' }}>{resume.summary}</p>
-                  </div>
-                )}
-
-                {/* Skills */}
-                {(resume.skills.languages.length > 0 || resume.skills.frameworks.length > 0 || resume.skills.tools.length > 0 || resume.skills.soft.length > 0) && (
-                  <div style={{ marginBottom: '16px' }}>
-                    <h2 style={{ fontSize: '11pt', fontWeight: '700', textTransform: 'uppercase', color: '#0c1e5e', borderBottom: '1px solid #000', paddingBottom: '2px', marginBottom: '8px' }}>Skills</h2>
-                    {resume.skills.languages.length > 0 && <p style={{ fontSize: '10pt', margin: '0 0 4px 0' }}><span style={{ fontWeight: '600', color: '#1a4d8f' }}>Languages: </span><span style={{ color: '#000' }}>{resume.skills.languages.join(", ")}</span></p>}
-                    {resume.skills.frameworks.length > 0 && <p style={{ fontSize: '10pt', margin: '0 0 4px 0' }}><span style={{ fontWeight: '600', color: '#1a4d8f' }}>Framework: </span><span style={{ color: '#000' }}>{resume.skills.frameworks.join(", ")}</span></p>}
-                    {resume.skills.tools.length > 0 && <p style={{ fontSize: '10pt', margin: '0 0 4px 0' }}><span style={{ fontWeight: '600', color: '#1a4d8f' }}>Tools & DataBases: </span><span style={{ color: '#000' }}>{resume.skills.tools.join(", ")}</span></p>}
-                    {resume.skills.soft.length > 0 && <p style={{ fontSize: '10pt', margin: '0' }}><span style={{ fontWeight: '600', color: '#1a4d8f' }}>Soft Skills: </span><span style={{ color: '#000' }}>{resume.skills.soft.join(", ")}</span></p>}
-                  </div>
-                )}
-
-                {/* Internship */}
-                {resume.experience.length > 0 && (
-                  <div style={{ marginBottom: '16px' }}>
-                    <h2 style={{ fontSize: '11pt', fontWeight: '700', textTransform: 'uppercase', color: '#0c1e5e', borderBottom: '1px solid #000', paddingBottom: '2px', marginBottom: '8px' }}>Internship</h2>
-                    {resume.experience.map((exp, i) => (
-                      <div key={i} style={{ marginBottom: '12px' }}>
-                        <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                          <div style={{ fontSize: '10pt', fontWeight: '700', color: '#1a4d8f', textTransform: 'uppercase' }}>{exp.company}</div>
-                          <div style={{ fontSize: '9pt', color: '#1a4d8f' }}>{exp.duration}</div>
-                        </div>
-                        <div style={{ fontSize: '10pt', color: '#000' }}>{exp.title}</div>
-                        <ul style={{ margin: '0', paddingLeft: '20px', fontSize: '10pt', listStyleType: 'disc' }}>
-                          {exp.description.split('\n').filter(line => line.trim()).map((line, idx) => (
-                            <li key={idx} style={{ color: '#000' }} dangerouslySetInnerHTML={{ __html: highlightKeywords(line.trim()) }} />
-                          ))}
-                        </ul>
-                      </div>
-                    ))}
-                  </div>
-                )}
-
-                {/* Projects - WITH LIVE LINK */}
-                {resume.projects.length > 0 && (
-                  <div style={{ marginBottom: '16px' }}>
-                    <h2 style={{ fontSize: '11pt', fontWeight: '700', textTransform: 'uppercase', color: '#0c1e5e', borderBottom: '1px solid #000', paddingBottom: '2px', marginBottom: '8px' }}>Projects</h2>
-                    {resume.projects.map((proj, i) => (
-                      <div key={i} style={{ marginBottom: '12px' }}>
-                        <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                          <div style={{ fontSize: '10pt', fontWeight: '700', color: '#1a4d8f' }}>{proj.title}</div>
-                          {proj.duration && <div style={{ fontSize: '9pt', color: '#1a4d8f' }}>{proj.duration}</div>}
-                        </div>
-                        {proj.tech && <div style={{ fontSize: '10pt', color: '#1a4d8f' }}>Tech: {proj.tech}</div>}
-                        {proj.liveLink && (
-                          <div style={{ fontSize: '9pt' }}>
-                            <strong style={{ color: '#1a4d8f' }}>Live:</strong>{' '}
-                            <a href={proj.liveLink} target="_blank" rel="noopener noreferrer" style={{ color: '#0066cc', textDecoration: 'underline' }}>{proj.liveLink}</a>
-                          </div>
-                        )}
-                        <ul style={{ margin: '0', paddingLeft: '20px', fontSize: '10pt', listStyleType: 'disc' }}>
-                          {proj.description.split('\n').filter(line => line.trim()).map((line, idx) => (
-                            <li key={idx} style={{ color: '#000' }} dangerouslySetInnerHTML={{ __html: highlightKeywords(line.trim()) }} />
-                          ))}
-                        </ul>
-                      </div>
-                    ))}
-                  </div>
-                )}
-
-                {/* Achievements */}
-                {resume.achievements.length > 0 && (
-                  <div style={{ marginBottom: '16px' }}>
-                    <h2 style={{ fontSize: '11pt', fontWeight: '700', textTransform: 'uppercase', color: '#0c1e5e', borderBottom: '1px solid #000', paddingBottom: '2px', marginBottom: '8px' }}>Achievements</h2>
-                    <ul style={{ margin: '0', paddingLeft: '20px', fontSize: '10pt', listStyleType: 'disc' }}>
-                      {resume.achievements.map((ach, i) => (
-                        <li key={i} style={{ color: '#000' }}>{ach}</li>
-                      ))}
-                    </ul>
-                  </div>
-                )}
-
-                {/* Certificates */}
-                {resume.certificates && resume.certificates.length > 0 && (
-                  <div style={{ marginBottom: '16px' }}>
-                    <h2 style={{ fontSize: '11pt', fontWeight: '700', textTransform: 'uppercase', color: '#0c1e5e', borderBottom: '1px solid #000', paddingBottom: '2px', marginBottom: '8px' }}>Certificates</h2>
-                    {resume.certificates.map((cert, i) => {
-                      const dateMatch = cert.match(/\(([^)]+)\)/)
-                      const certText = dateMatch ? cert.replace(/\s*\([^)]+\)\s*/, '') : cert
-                      const date = dateMatch ? dateMatch[1] : null
-                      return (
-                        <div key={i} style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4px' }}>
-                          <div style={{ fontSize: '10pt', color: '#000' }}>{certText}</div>
-                          {date && <div style={{ fontSize: '9pt', color: '#1a4d8f' }}>{date}</div>}
-                        </div>
-                      )
-                    })}
-                  </div>
-                )}
-
-                {/* Education - DEGREE ON ONE LINE, CGPA ON NEXT */}
-                {resume.education.length > 0 && (
-                  <div style={{ marginBottom: '16px' }}>
-                    <h2 style={{ fontSize: '11pt', fontWeight: '700', textTransform: 'uppercase', color: '#0c1e5e', borderBottom: '1px solid #000', paddingBottom: '2px', marginBottom: '8px' }}>Education</h2>
-                    {resume.education.map((edu, i) => (
-                      <div key={i} style={{ marginBottom: '8px' }}>
-                        <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                          <div style={{ fontSize: '10pt', fontWeight: '700', color: '#1a4d8f' }}>{edu.institution}</div>
-                          <div style={{ fontSize: '9pt', color: '#000' }}>{edu.location}</div>
-                        </div>
-                        <div style={{ fontSize: '10pt', color: '#000' }}>{edu.degree}</div>
-                        {edu.score && (
-                          <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                            <div style={{ fontSize: '10pt', color: '#000' }}>
-                              {edu.degree.toLowerCase().includes('bachelor') || edu.degree.toLowerCase().includes('b.tech') ? 'CGPA' : 'Percentage'}: {edu.score}
-                            </div>
-                            {edu.year && <div style={{ fontSize: '9pt', color: '#1a4d8f' }}>{edu.year}</div>}
-                          </div>
-                        )}
-                        {!edu.score && edu.year && <div style={{ fontSize: '9pt', color: '#1a4d8f', textAlign: 'right' }}>{edu.year}</div>}
-                      </div>
-                    ))}
-                  </div>
-                )}
-
-              </div>
-            </div>
-          </div>
-        </section>
-
-        {/* Generate Resume Button */}
         <div className="flex justify-center">
           <button
             onClick={handleGenerateResume}

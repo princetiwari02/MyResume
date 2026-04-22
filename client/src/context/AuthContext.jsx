@@ -1,12 +1,12 @@
 import { createContext, useContext, useState, useEffect } from "react"
-import { 
+import {
   createUserWithEmailAndPassword,
   signInWithEmailAndPassword,
   signOut,
   onAuthStateChanged,
   GoogleAuthProvider,
   signInWithPopup,
-  updateProfile
+  updateProfile,
 } from "firebase/auth"
 import { auth } from "../firebase.config"
 import axios from "axios"
@@ -18,43 +18,49 @@ export function AuthProvider({ children }) {
   const [user, setUser] = useState(null)
   const [loading, setLoading] = useState(true)
 
-  // Helper function to get backend JWT token
   const getBackendToken = async (firebaseUser) => {
     try {
-      // Get Firebase ID token
-      const firebaseToken = await firebaseUser.getIdToken()
-      
-      // Send to backend to get JWT
+      const firebaseToken = await firebaseUser.getIdToken(true)
+
       const response = await axios.post(`${API_URL}/api/auth/firebase-login`, {
         firebaseToken,
         email: firebaseUser.email,
-        name: firebaseUser.displayName || firebaseUser.email.split('@')[0]
+        name: firebaseUser.displayName || firebaseUser.email.split("@")[0],
       })
 
-      // Save JWT token to localStorage
       if (response.data.token) {
-        localStorage.setItem('token', response.data.token)
-        console.log('✅ JWT token saved to localStorage')
+        localStorage.setItem("token", response.data.token)
       }
 
-      return response.data
+      return response.data.token
     } catch (error) {
-      console.error('Failed to get backend token:', error)
-      // Even if backend fails, Firebase auth succeeded, so continue
+      console.error("Failed to get backend token:", error)
+      return null
     }
   }
 
-  // Register new user with email and password
+  const getToken = async () => {
+    if (!auth.currentUser) {
+      return localStorage.getItem("token")
+    }
+
+    try {
+      const freshToken = await getBackendToken(auth.currentUser)
+      return freshToken || localStorage.getItem("token")
+    } catch (error) {
+      console.error("getToken failed:", error)
+      return localStorage.getItem("token")
+    }
+  }
+
   const signup = async (name, email, password) => {
     try {
       const userCredential = await createUserWithEmailAndPassword(auth, email, password)
-      
-      // Update user profile with name
+
       await updateProfile(userCredential.user, {
-        displayName: name
+        displayName: name,
       })
 
-      // Get backend JWT token
       await getBackendToken(userCredential.user)
 
       return userCredential
@@ -63,51 +69,52 @@ export function AuthProvider({ children }) {
     }
   }
 
-  // Login with email and password
   const login = async (email, password) => {
     try {
       const userCredential = await signInWithEmailAndPassword(auth, email, password)
-      
-      // Get backend JWT token
       await getBackendToken(userCredential.user)
-      
       return userCredential
     } catch (error) {
       throw error
     }
   }
 
-  // Login with Google
   const loginWithGoogle = async () => {
     const provider = new GoogleAuthProvider()
     try {
       const result = await signInWithPopup(auth, provider)
-      
-      // Get backend JWT token
       await getBackendToken(result.user)
-      
       return result
     } catch (error) {
       throw error
     }
   }
 
-  // Logout
-  const logout = () => {
-    localStorage.removeItem('token')
-    return signOut(auth)
+  const logout = async () => {
+    try {
+      localStorage.removeItem("token")
+      localStorage.removeItem("resumeData")
+      sessionStorage.removeItem("resumeData")
+
+      if (auth.currentUser?.uid) {
+        sessionStorage.removeItem(`resumeData_${auth.currentUser.uid}`)
+        localStorage.removeItem(`resumeData_${auth.currentUser.uid}`)
+      }
+
+      await signOut(auth)
+    } catch (error) {
+      throw error
+    }
   }
 
-  // Listen for auth state changes
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
       setUser(currentUser)
-      
-      // If user exists and no token in localStorage, get it
-      if (currentUser && !localStorage.getItem('token')) {
+
+      if (currentUser) {
         await getBackendToken(currentUser)
       }
-      
+
       setLoading(false)
     })
 
@@ -120,14 +127,11 @@ export function AuthProvider({ children }) {
     login,
     loginWithGoogle,
     logout,
-    loading
+    loading,
+    getToken,
   }
 
-  return (
-    <AuthContext.Provider value={value}>
-      {!loading && children}
-    </AuthContext.Provider>
-  )
+  return <AuthContext.Provider value={value}>{!loading && children}</AuthContext.Provider>
 }
 
 export const useAuth = () => {
